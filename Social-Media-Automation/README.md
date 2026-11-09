@@ -188,7 +188,3 @@ Se il modulo manca o fallisce, il reel viene comunque salvato e viene stampato u
 - Il modello vede fotogrammi a bassa risoluzione: può scegliere momenti poco nitidi. In quel caso aumenta `lato_max_px` o `fotogrammi_max`, tenendo presente che il costo cresce.
 - I percorsi predefiniti e il font sono pensati per Windows e per una cartella sincronizzata nel cloud; su altri sistemi vanno adattati.
 - Il montaggio non include audio, transizioni o sottotitoli.
-
-## Licenza
-
-Aggiungi qui la licenza che preferisci (per esempio MIT) prima di pubblicare il repository.
