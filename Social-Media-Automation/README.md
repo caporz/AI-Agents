@@ -1,174 +1,182 @@
 # Reel Agent
 
-Script Python che trasforma una cartella di video grezzi in **un reel verticale pronto da rivedere**: sceglie i momenti migliori con un modello Claude, monta il video con FFmpeg, scrive caption e hashtag e, se vuoi, ti avvisa su Telegram.
+A Python script that turns a folder of raw videos into **a vertical reel ready for review**. It uses a Claude model to select the best moments, edits the video with FFmpeg, generates a caption and hashtags, and can optionally send you a Telegram notification.
 
-Il progetto è un **esempio**: contiene un solo file, `reel_agent_example.py`. Non include chiavi, token o dati personali.
+This project is a **demonstration example**: it contains a single file, `reel_agent_example.py`. It does not include API keys, tokens, or personal data.
 
-## Cosa fa
+## What it does
 
-1. Legge i video nuovi da una cartella di input (`Inbox`).
-2. Se i file stanno ancora arrivando (per esempio da una cartella sincronizzata nel cloud), aspetta fino a 20 minuti che finiscano.
-3. Estrae dei **fotogrammi ridotti** da ogni video e li invia a un modello Claude insieme a un prompt che descrive il tuo materiale.
-4. Il modello risponde con un **piano di montaggio** (quali segmenti usare e in che ordine), una caption e degli hashtag.
-5. Lo script controlla il piano, monta il reel con FFmpeg (1080x1920, senza audio) e salva tutto in una cartella `Da approvare`.
-6. Se esiste il modulo opzionale `telegram_notify`, invia l'anteprima su Telegram.
+1. Reads new videos from an input folder (`Inbox`).
+2. If files are still being uploaded (for example, from a cloud-synced folder), waits up to 20 minutes for the uploads to complete.
+3. Extracts **downscaled video frames** from each video and sends them to a Claude model along with a prompt describing the available footage.
+4. The model returns an **editing plan** (which segments to use and in what order), a caption, and hashtags.
+5. The script validates the plan, edits the reel with FFmpeg (1080x1920, no audio), and saves the output in a `To Approve` folder.
+6. If the optional `telegram_notify` module is available, it sends a preview via Telegram.
 
-L'audio non viene aggiunto di proposito: il flusso prevede che sia tu a inserirlo (voce, musica) prima di pubblicare.
+Audio is intentionally excluded: the workflow assumes that you will add it yourself (voice-over or music) before publishing.
 
+```text
+Inbox/  --->  frames  --->  Claude  --->  editing plan
+                                             |
+                    To Approve/  <---  FFmpeg + caption
+                    (.mp4  .txt  .json)
 ```
-Inbox/  --->  fotogrammi  --->  Claude  --->  piano di montaggio
-                                                    |
-                          Da approvare/  <---  FFmpeg + caption
-                          (.mp4  .txt  .json)
-```
 
-## Requisiti
+## Requirements
 
-- Python 3.10 o superiore
-- `ffmpeg` e `ffprobe` nel `PATH`
-- Una chiave API Anthropic
-- Librerie Python: `pip install anthropic keyring requests`
+- Python 3.10 or later
+- `ffmpeg` and `ffprobe` available in the system `PATH`
+- An Anthropic API key
+- Python libraries: `pip install anthropic keyring requests`
 
-## Installazione
+## Installation
 
 ```bash
-git clone <il-tuo-repository>
-cd <il-tuo-repository>
+git clone <your-repository>
+cd <your-repository>
 python -m pip install anthropic keyring requests
 ```
 
-### Salvare la chiave API
+### Storing the API key
 
-La chiave **non va scritta nel codice né in un file del repository**. Lo script la cerca, in quest'ordine:
+The API key **must never be hardcoded or stored in a repository file**. The script looks for it in the following order:
 
-1. nel gestore credenziali del sistema (Windows Credential Manager, macOS Keychain, Linux Secret Service), servizio `ig-agente`, utente `anthropic`;
-2. nella variabile d'ambiente `ANTHROPIC_API_KEY`.
+1. In the operating system's credential manager (Windows Credential Manager, macOS Keychain, Linux Secret Service), using service `ig-agente` and username `anthropic`.
+2. In the `ANTHROPIC_API_KEY` environment variable.
 
-Per salvarla nel gestore credenziali senza mostrarla a schermo:
+To store the key in the credential manager without displaying it on screen:
 
 ```bash
-python -c "import keyring, getpass; keyring.set_password('ig-agente', 'anthropic', getpass.getpass('Chiave API: '))"
+python -c "import keyring, getpass; keyring.set_password('ig-agente', 'anthropic', getpass.getpass('API key: '))"
 ```
 
-Su Windows incolla con il **tasto destro del mouse**: con Ctrl+V il terminale può inserire un carattere di controllo al posto della chiave. Lo script rifiuta chiavi che non iniziano con `sk-ant-` o sono troppo corte, e il messaggio d'errore lo segnala.
+On Windows, paste the key using the **right mouse button**: Ctrl+V may insert a control character instead of the key in some terminals. The script rejects keys that do not start with `sk-ant-` or are too short, and reports this in the error message.
 
-## Configurazione
+## Configuration
 
-I valori personali stanno in un file `config.json` **accanto allo script**. Non va pubblicato (vedi la sezione sulla sicurezza). Esempio:
+Personal settings are stored in a `config.json` file **in the same directory as the script**. This file must not be published (see the Security and Privacy section). Example:
 
 ```json
 {
   "inbox": "~/ReelAgent/1_Inbox",
-  "out": "~/ReelAgent/2_DaApprovare",
+  "out": "~/ReelAgent/2_ToApprove",
   "durata_min": 60,
   "durata_max": 75,
-  "tono": "motivazionale ma concreto, mai esagerato"
+  "tono": "motivational but practical, never exaggerated"
 }
 ```
 
-Usa le barre normali (`/`) anche su Windows. In JSON ogni riga, tranne l'ultima, deve finire con una virgola. Se il file non è valido lo script lo dice, con riga e colonna.
+Use forward slashes (`/`) on Windows as well. In JSON, every line except the last one must end with a comma. If the file is invalid, the script reports the line and column of the error.
 
-| Chiave | Significato | Predefinito |
+| Key | Description | Default |
 |---|---|---|
-| `inbox` | Cartella dei video da montare | `~/Google Drive/IG-Agente/1_Inbox` |
-| `out` | Cartella dei reel generati | `~/Google Drive/IG-Agente/2_DaApprovare` |
-| `durata_min`, `durata_max` | Limiti di durata del reel, in secondi | 60 e 120 |
-| `quota_materiale` | Quota del girato che diventa reel (entro i limiti) | 0.20 |
-| `min_materiale` | Sotto questi secondi di girato non si genera nulla | 120 |
-| `tono` | Tono delle caption | motivazionale ma concreto |
-| `nomi_esercizi` | Se `false`, hook e caption non nominano esercizi o attrezzi | `false` |
-| `modello` | Modello Claude da usare | `claude-sonnet-5-5` |
-| `lato_max_px` | Lato lungo dei fotogrammi inviati al modello | 384 |
-| `fotogramma_ogni_s` | Un fotogramma ogni N secondi di video | 4.0 |
-| `fotogrammi_max` | Tetto ai fotogrammi per chiamata | 90 |
+| `inbox` | Folder containing the videos to be edited | `~/Google Drive/IG-Agente/1_Inbox` |
+| `out` | Folder where generated reels are saved | `~/Google Drive/IG-Agente/2_DaApprovare` |
+| `durata_min`, `durata_max` | Minimum and maximum reel duration, in seconds | 60 and 120 |
+| `quota_materiale` | Proportion of the footage used for the reel (within the duration limits) | 0.20 |
+| `min_materiale` | Minimum footage duration required to generate a reel | 120 |
+| `tono` | Caption tone | Motivational but practical |
+| `nomi_esercizi` | If `false`, hooks and captions do not mention exercises or equipment | `false` |
+| `modello` | Claude model to use | `claude-sonnet-5-5` |
+| `lato_max_px` | Maximum frame dimension sent to the model | 384 |
+| `fotogramma_ogni_s` | Extract one frame every N seconds of video | 4.0 |
+| `fotogrammi_max` | Maximum number of frames per API call | 90 |
 
-Due impostazioni si cambiano **direttamente nel codice**, in cima al file:
+Two settings must be changed **directly in the code**, near the top of the file:
 
-- `NICHE`: l'argomento dell'account (nel prompt compare come "un account Instagram/TikTok su ...").
-- `STRUTTURA_SESSIONE`: la descrizione del tuo materiale e dell'ordine tipico delle scene. Il modello la usa per montare i segmenti nella sequenza giusta. Più è precisa, migliore è il risultato.
+- `NICHE`: the account's topic (the prompt describes it as an Instagram/TikTok account about this subject).
+- `STRUTTURA_SESSIONE`: a description of the footage and the typical order of scenes. The model uses it to arrange the segments in the correct sequence. The more precise the description, the better the result.
 
-Il font del testo d'apertura si imposta con la variabile d'ambiente `IG_FONT` (percorso di un file `.ttf`). Il valore predefinito è un font di Windows: su macOS e Linux va cambiato, altrimenti il testo non viene impresso nel video.
+The opening text font is configured through the `IG_FONT` environment variable (the path to a `.ttf` file). The default is a Windows font: on macOS and Linux, it must be changed, otherwise the text will not be rendered on the video.
 
-## Uso
+## Usage
 
 ```bash
 python reel_agent_example.py
 ```
 
-Per ogni esecuzione lo script crea **un solo reel** con tutti i video presenti nella cartella di input (fino a 30). L'output, in `out`, è composto da tre file con lo stesso nome (`AAAAMMGG_HHMM_titolo`):
+Each execution creates **a single reel** using all videos in the input folder (up to 30). The output, saved in `out`, consists of three files with the same name (`YYYYMMDD_HHMM_title`):
 
-- `.mp4`: il reel;
-- `.txt`: caption e hashtag, da copiare;
-- `.json`: dettagli del montaggio (segmenti, durata, modello, elenco dei video usati ed elaborati).
+- `.mp4`: the reel;
+- `.txt`: caption and hashtags, ready to copy;
+- `.json`: editing details (segments, duration, model, list of videos used and processed).
 
-### Esecuzione automatica
+### Automated execution
 
-Lo script è pensato per girare a orari fissi.
+The script is designed to run at scheduled times.
 
-- **Windows:** Utilità di pianificazione, per esempio ogni giorno alle 18:
+- **Windows:** Use Task Scheduler, for example, to run it every day at 6 PM:
+  ```bash
+  schtasks /create /tn "Reel Agent" /tr "C:\path\to\run.bat" /sc daily /st 18:00
   ```
-  schtasks /create /tn "Reel Agent" /tr "C:\percorso\avvia.bat" /sc daily /st 18:00
-  ```
-  dove `avvia.bat` lancia Python e scrive l'output in un file di log.
-- **macOS/Linux:** `cron` o un timer `systemd`.
+  The `run.bat` file should launch Python and write the output to a log file.
+- **macOS/Linux:** Use `cron` or a `systemd` timer.
 
-Il computer deve essere acceso con l'accesso attivo, perché la chiave sta nel gestore credenziali dell'utente.
+The computer must be powered on and the user must be logged in, because the API key is stored in the user's credential manager.
 
-## Come funziona, in dettaglio
+## How it works in detail
 
-### Ordine dei file
-I video vengono ordinati per data e ora scritte nel nome del file (per esempio `20250101_120000.mp4`, tipico dei telefoni). Se i nomi non le contengono, si usa la data di modifica. L'ordine è passato al modello come "probabile ordine cronologico", e il modello può correggerlo guardando le immagini.
+### File ordering
 
-### Attesa del caricamento
-Prima di partire lo script controlla che nessun file sia stato modificato negli ultimi 2 minuti e che le dimensioni restino stabili. In caso contrario aspetta, fino a un massimo di 20 minuti, per non montare una sessione a metà.
+Videos are sorted by the date and time included in their filenames (for example, `20250101_120000.mp4`, a common format used by smartphones). If the filenames do not contain a timestamp, the file modification date is used instead. This order is passed to the model as the "likely chronological order", and the model can adjust it by analyzing the images.
 
-### Durata del reel
-`durata = quota_materiale x girato`, limitata tra `durata_min` e `durata_max`. Se il girato è sotto `min_materiale`, non si genera nulla e, se esiste `telegram_notify`, si invia un solo avviso per quel gruppo di file.
+### Upload completion check
 
-### Fotogrammi e costo
-Per ogni video si estraggono fotogrammi ridotti (lato lungo `lato_max_px`) a intervalli regolari, con un tetto totale `fotogrammi_max`. I fotogrammi sono la parte che costa di più: ridurne dimensione o numero abbassa il costo, a scapito della precisione dei tagli.
+Before starting, the script checks that no file has been modified in the last two minutes and that file sizes remain stable. Otherwise, it waits up to 20 minutes to avoid editing an incomplete recording session.
 
-A ogni chiamata lo script stampa i token usati e un costo stimato, e li aggiunge a `costi.csv` (data, modello, fotogrammi, token, costo). I prezzi sono in una tabella nel codice (`PREZZI`) e **possono essere obsoleti**: verificali sulla pagina prezzi di Anthropic.
+### Reel duration
 
-### Il piano del modello
-Il modello restituisce un JSON con `segments` (file, inizio, fine), `hook_text`, `caption`, `hashtags` e `title`. Se la risposta non è un JSON valido, lo script riprova una volta e, se fallisce ancora, si ferma stampando il motivo (stop reason, token, inizio della risposta).
+`duration = footage_ratio x total_footage`, constrained by `durata_min` and `durata_max`. If the available footage is shorter than `min_materiale`, no reel is generated. If `telegram_notify` is available, a single notification is sent for that group of files.
 
-Prima del montaggio il piano viene **validato**: i segmenti fuori dalla durata reale dei video vengono corretti, quelli più brevi di un secondo scartati e il totale limitato alla durata richiesta (i segmenti oltre il limite vengono tolti e l'ultimo viene accorciato).
+### Frames and costs
 
-Il prompt chiede al modello di usare materiale da tutti i video, ma **non è un obbligo verificato dal codice**: un video può restare fuori dal reel.
+For each video, the script extracts downscaled frames (maximum dimension: `lato_max_px`) at regular intervals, subject to the overall `fotogrammi_max` limit. Frames are the most expensive part of the process: reducing their size or number lowers costs, but may reduce editing precision.
 
-### Montaggio
-FFmpeg ritaglia ogni segmento a 1080x1920 a 30 fps, li unisce, applica un bitrate massimo di 8 Mbps (file leggeri per cloud e upload) e, se il font esiste, imprime l'`hook_text` nei primi 2,5 secondi. Non c'è audio.
+For each API call, the script prints the number of tokens used and an estimated cost, then records them in `costi.csv` (date, model, frames, tokens, cost). Prices are stored in a table in the code (`PREZZI`) and **may be outdated**: check Anthropic's pricing page for the latest rates.
 
-### Stato
-`state.json` (accanto allo script) memorizza i file già elaborati, identificati da nome, dimensione e data. Tutti i video di un gruppo vengono segnati come usati dopo il montaggio, così non finiscono nel reel successivo. Per rielaborare gli stessi video, cancella `state.json`.
+### The model's editing plan
 
-### Notifiche Telegram (opzionale)
-Se nella stessa cartella esiste un modulo `telegram_notify` con queste funzioni, lo script lo usa:
+The model returns a JSON object containing `segments` (file, start, end), `hook_text`, `caption`, `hashtags`, and `title`. If the response is not valid JSON, the script retries once. If the second attempt also fails, it stops and prints the reason (stop reason, tokens, and the beginning of the response).
 
-- `credenziali()` restituisce `(token, chat_id)`;
-- `api(token, metodo, **kwargs)` chiama l'API dei bot Telegram;
-- `invia_in_attesa(cartella)` invia i video non ancora notificati.
+Before editing, the plan is **validated**: segments exceeding the actual video duration are corrected, segments shorter than one second are discarded, and the total duration is limited to the requested length (segments exceeding the limit are removed and the final segment is shortened).
 
-Se il modulo manca o fallisce, il reel viene comunque salvato e viene stampato un avviso.
+The prompt asks the model to use footage from all videos, but **this is not enforced by the code**: some videos may be left out of the final reel.
 
-## Risoluzione dei problemi
+### Video editing
 
-| Sintomo | Causa probabile |
+FFmpeg crops each segment to 1080x1920 at 30 fps, joins them, applies a maximum bitrate of 8 Mbps (to keep files lightweight for cloud storage and uploading), and, if the font is available, overlays `hook_text` during the first 2.5 seconds. No audio is included.
+
+### Processing state
+
+`state.json` (stored alongside the script) keeps track of previously processed files, identified by filename, size, and modification date. All videos in a group are marked as used after editing, preventing them from being included in the next reel. To process the same videos again, delete `state.json`.
+
+### Telegram notifications (optional)
+
+If a `telegram_notify` module containing the following functions is available in the same directory, the script uses it:
+
+- `credenziali()` returns `(token, chat_id)`;
+- `api(token, metodo, **kwargs)` calls the Telegram Bot API;
+- `invia_in_attesa(cartella)` sends videos that have not yet been notified.
+
+If the module is missing or fails, the reel is still saved and a warning is printed.
+
+## Troubleshooting
+
+| Symptom | Likely cause |
 |---|---|
-| `config.json non valido: riga N` | Manca una virgola, o ce n'è una di troppo sull'ultima riga |
-| `Cartella Inbox non trovata` | Percorso errato in `config.json`; controlla che esista |
-| `La chiave salvata non e' valida` | Chiave incollata male: salvala di nuovo |
-| Errore API 400 con risposta vuota e nessun `request-id` | La richiesta non arriva ad Anthropic: proxy, antivirus o rete aziendale che intercettano il traffico, oppure chiave rotta |
-| Errore API sul credito | Saldo prepagato esaurito nella console Anthropic |
-| `Il modello non ha restituito un JSON valido` | Risposta troncata o con testo extra: guarda i dettagli stampati |
-| Il testo d'apertura non compare | Il file di `IG_FONT` non esiste |
-| Nessun reel creato | Girato sotto `min_materiale`, oppure file modificati da meno di 2 minuti |
+| `config.json non valido: riga N` | A comma is missing, or an extra comma appears at the end of the last line |
+| `Cartella Inbox non trovata` | Incorrect path in `config.json`; check that the folder exists |
+| `La chiave salvata non e' valida` | The API key may have been pasted incorrectly; save it again |
+| API error 400 with an empty response and no `request-id` | The request may not be reaching Anthropic: a proxy, antivirus, or corporate network may be intercepting the traffic, or the API key may be corrupted |
+| API credit error | The prepaid balance in the Anthropic console may be exhausted |
+| `Il modello non ha restituito un JSON valido` | The response may have been truncated or may contain additional text; check the printed details |
+| Opening text does not appear | The file specified in `IG_FONT` does not exist |
+| No reel is generated | The footage is shorter than `min_materiale`, or files have been modified less than two minutes ago |
 
-## Sicurezza e privacy
+## Security and Privacy
 
-- Nel repository **non devono finire** `config.json` (percorsi personali), `state.json`, `costi.csv`, i log, né i video e i file generati. Esempio di `.gitignore`:
-  ```
+- The following files **must not be committed to the repository**: `config.json` (personal paths), `state.json`, `costi.csv`, log files, videos, and generated output. Example `.gitignore`:
+  ```gitignore
   config.json
   state.json
   costi.csv
@@ -179,12 +187,12 @@ Se il modulo manca o fallisce, il reel viene comunque salvato e viene stampato u
   !config.example.json
   __pycache__/
   ```
-- Le chiavi stanno nel gestore credenziali, mai nel codice. Se una chiave finisce per sbaglio in un commit, **revocala** dalla console: cancellare il file non basta, perché resta nella cronologia di Git.
-- I fotogrammi dei tuoi video vengono inviati all'API di Anthropic: non usare materiale che non vuoi condividere con il servizio.
+- API keys must be stored in the credential manager, never in the source code. If a key is accidentally included in a commit, **revoke it** from the Anthropic console. Deleting the file is not enough, because the key remains in Git history.
+- Frames extracted from your videos are sent to Anthropic's API: do not use footage that you do not want to share with the service.
 
-## Limiti noti
+## Known Limitations
 
-- Il risultato dipende dalla qualità del prompt e dalla descrizione del materiale in `STRUTTURA_SESSIONE`.
-- Il modello vede fotogrammi a bassa risoluzione: può scegliere momenti poco nitidi. In quel caso aumenta `lato_max_px` o `fotogrammi_max`, tenendo presente che il costo cresce.
-- I percorsi predefiniti e il font sono pensati per Windows e per una cartella sincronizzata nel cloud; su altri sistemi vanno adattati.
-- Il montaggio non include audio, transizioni o sottotitoli.
+- Output quality depends on the prompt and the description of the footage in `STRUTTURA_SESSIONE`.
+- The model analyzes low-resolution frames and may select moments that are not sufficiently sharp. In that case, increase `lato_max_px` or `fotogrammi_max`, keeping in mind that costs will also increase.
+- Default paths and the font are designed for Windows and a cloud-synced folder; they must be adapted for other operating systems.
+- The editing process does not include audio, transitions, or subtitles.
